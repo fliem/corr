@@ -146,10 +146,10 @@ if __name__ == "__main__":
                         json_dest_file = dest_file.strip(".nii.gz") + ".json"
                         shutil.copyfile(json_source_file, json_dest_file)
                     else:
-                        raise FileNotFoundError(json_source_file)
+                        print("file not found: {}".format(json_source_file))
 
                 # update json with orig path
-                add_info_to_json(json_dest_file, {"OrigFile": file.path})
+                add_info_to_json(json_dest_file, {"OrigFile": file.path}, create_new=True)
 
 
             elif "_sessions.tsv" in dest_file:
