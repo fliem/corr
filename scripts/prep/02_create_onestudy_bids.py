@@ -61,7 +61,7 @@ if __name__ == "__main__":
     mkdir(out_dir)
 
     descr_file = os.path.join(out_dir, "dataset_description.json")
-    info = {"Name": "CORR", "BIDSVersion": "1.0.2"}
+    info = {"Name": "CORR", "BIDSVersion": "1.0.2", "Info": "This folder only contains ANAT AND FUNC data"}
     add_info_to_json(descr_file, info, create_new=True)
 
     os.chdir(dl_dir)
@@ -91,9 +91,12 @@ if __name__ == "__main__":
         # get file df
         layout = BIDSLayout(site_dir)
         df = layout.as_data_frame()
-        copy_files = df[df.path.str.endswith(".nii.gz") | df.path.str.endswith("_sessions.tsv")]
+        # copy_files = df[df.path.str.endswith(".nii.gz") | df.path.str.endswith("_sessions.tsv")]
 
+        nii_of_int = df[df.path.str.endswith(".nii.gz") & df.modality.isin(["anat", "func"])]
+        session_files = df[df.path.str.endswith("_sessions.tsv")]
 
+        copy_files = pd.concat((nii_of_int, session_files))
         def get_new_file(source_file, site_dir, out_dir, old_subject, site):
             new_file = os.path.relpath(source_file, site_dir).replace(old_subject, site + "x" + old_subject)
             dest_file = os.path.join(out_dir, new_file)
@@ -170,9 +173,9 @@ if __name__ == "__main__":
     run("bids-validator {}".format(out_dir))
 
     # check nii file counts
-    n_orig = len(glob(os.path.join(dl_dir, "*/sub-*/ses-*/*/*nii.gz")))
-    n_bids = len(glob(os.path.join(out_dir, "sub-*/ses-*/*/*nii.gz")))
-    print("Checking N files", n_orig, n_bids)
-    assert n_orig == n_bids, "File counts not equal"
+    # n_orig = len(glob(os.path.join(dl_dir, "*/sub-*/ses-*/*/*nii.gz")))
+    # n_bids = len(glob(os.path.join(out_dir, "sub-*/ses-*/*/*nii.gz")))
+    # print("Checking N files", n_orig, n_bids)
+    # assert n_orig == n_bids, "File counts not equal"
 
     print("Converted {} sites. Everything seems fine.".format(len(sites)))
