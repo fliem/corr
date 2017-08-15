@@ -18,4 +18,4 @@ RUN pip install duecredit
 COPY . /code/
 
 
-ENTRYPOINT ["/bin/bash"]
+#ENTRYPOINT ["/bin/bash"]

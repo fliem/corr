@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os, shutil, argparse
 from glob import glob
 from bids.grabbids import BIDSLayout
@@ -5,6 +7,7 @@ import pandas as pd
 import json
 import numpy
 from collections import OrderedDict
+from utils import run
 
 
 def mkdir(p):
@@ -13,7 +16,7 @@ def mkdir(p):
 
 
 def to_tsv(df, filename, header=True):
-    df.to_csv(filename, sep="\t", index=False, header=header)
+    df.to_csv(filename, sep="\t", index=False, header=header, na_rep="n/a")
 
 
 def read_tsv(filename):
@@ -47,8 +50,8 @@ def add_info_to_json(bids_file, new_info, create_new=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('root_dir', help='root_dir {expects root_dir}/dl folder and will write to '
-                                         '{expects root_dir}/bids')
+    parser.add_argument('root_dir', help='root_dir expects {root_dir}/dl folder and will write to '
+                                         '{root_dir}/bids')
     args = parser.parse_args()
 
     root_dir = os.path.abspath(args.root_dir)
@@ -64,15 +67,23 @@ if __name__ == "__main__":
     os.chdir(dl_dir)
     sites = glob("*")
 
+    participants = pd.DataFrame([])
+
     for site_orig_name in sites:
         site = site_orig_name.replace("_", "")  # without _
+        print("Converting {}".format(site))
         site_dir = os.path.join(dl_dir, site_orig_name)
 
+        # merge participants files
+        participants_site = read_tsv(os.path.join(site_dir, "participants.tsv"))
+        participants_site["site"] = site
+        participants_site["orig_participant_id"] = participants_site["participant_id"]
+        participants_site["participant_id"] = participants_site["site"] + "x" + participants_site["orig_participant_id"]
+        participants = pd.concat((participants, participants_site))
+
+        # get file df
         layout = BIDSLayout(site_dir)
         df = layout.as_data_frame()
-        #
-        # import pdb
-        # pdb.set_trace()
         copy_files = df[df.path.str.endswith(".nii.gz") | df.path.str.endswith("_sessions.tsv")]
 
 
@@ -100,13 +111,13 @@ if __name__ == "__main__":
             if ".nii.gz" in file.path:
                 # bvec/bvals
                 if file.modality == "dwi":
-                    source_file = layout.get_bval(file.path)
-                    dest_file = get_new_file(source_file, site_dir, out_dir, file.subject, site)
-                    shutil.copyfile(source_file, dest_file)
+                    extra_source_file = layout.get_bval(file.path)
+                    extra_dest_file = get_new_file(extra_source_file, site_dir, out_dir, file.subject, site)
+                    shutil.copyfile(extra_source_file, extra_dest_file)
 
-                    source_file = layout.get_bvec(file.path)
-                    dest_file = get_new_file(source_file, site_dir, out_dir, file.subject, site)
-                    shutil.copyfile(source_file, dest_file)
+                    extra_source_file = layout.get_bvec(file.path)
+                    extra_dest_file = get_new_file(extra_source_file, site_dir, out_dir, file.subject, site)
+                    shutil.copyfile(extra_source_file, extra_dest_file)
 
                 # copy jsons
                 task_str = "task-{}_".format(file.task) if file.task and not pd.isnull(file.task) else ""
@@ -122,7 +133,13 @@ if __name__ == "__main__":
                     json_dest_file = dest_file.strip(".nii.gz") + ".json"
                     shutil.copyfile(json_source_file, json_dest_file)
                 else:
-                    raise FileNotFoundError(json_source_file)
+                    json_source_file = os.path.join(site_dir, "ses-{}_{}{}{}.json".format(file.session, task_str,
+                                                                                          acq_str, file.type))
+                    if os.path.isfile(json_source_file):
+                        json_dest_file = dest_file.strip(".nii.gz") + ".json"
+                        shutil.copyfile(json_source_file, json_dest_file)
+                    else:
+                        raise FileNotFoundError(json_source_file)
 
                 # update json with orig path
                 add_info_to_json(json_dest_file, {"OrigFile": file.path})
@@ -134,3 +151,20 @@ if __name__ == "__main__":
                 to_tsv(ses, dest_file)
             else:
                 raise Exception(file.path)
+
+    # save participants
+    to_tsv(participants, os.path.join(out_dir, "all_participants.tsv"))
+    mri_participants = [os.path.basename(s) for s in sorted(glob(os.path.join(out_dir, "sub-*")))]
+    mri_participants = [s.split("-")[-1] for s in mri_participants]
+    participants = participants[participants.participant_id.isin(mri_participants)]
+    to_tsv(participants, os.path.join(out_dir, "participants.tsv"))
+
+    run("bids-validator {}".format(out_dir))
+
+    # check nii file counts
+    n_orig = len(glob(os.path.join(dl_dir, "*/sub-*/ses-*/*/*nii.gz")))
+    n_bids = len(glob(os.path.join(out_dir, "sub-*/ses-*/*/*nii.gz")))
+    print("Checking N files", n_orig, n_bids)
+    assert n_orig == n_bids, "File counts not equal"
+
+    print("Converted {} sites. Everything seems fine.".format(len(sites)))
