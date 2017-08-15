@@ -68,6 +68,7 @@ if __name__ == "__main__":
     sites = glob("*")
 
     participants = pd.DataFrame([])
+    participants_missing = pd.DataFrame([])
 
     for site_orig_name in sites:
         site = site_orig_name.replace("_", "")  # without _
@@ -75,11 +76,17 @@ if __name__ == "__main__":
         site_dir = os.path.join(dl_dir, site_orig_name)
 
         # merge participants files
-        participants_site = read_tsv(os.path.join(site_dir, "participants.tsv"))
-        participants_site["site"] = site
-        participants_site["orig_participant_id"] = participants_site["participant_id"]
-        participants_site["participant_id"] = participants_site["site"] + "x" + participants_site["orig_participant_id"]
-        participants = pd.concat((participants, participants_site))
+        participants_file = os.path.join(site_dir, "participants.tsv")
+        if os.path.isfile(participants_file):
+            participants_site = read_tsv(participants_file)
+            participants_site["site"] = site
+            participants_site["orig_participant_id"] = participants_site["participant_id"]
+            participants_site["participant_id"] = participants_site["site"] + "x" + participants_site["orig_participant_id"]
+            participants = pd.concat((participants, participants_site))
+        else:
+            participants_site = pd.DataFrame({"site": [site], "participant_id": "participants file missing"})
+            participants_missing = pd.concat((participants_missing, participants_site))
+
 
         # get file df
         layout = BIDSLayout(site_dir)
@@ -153,11 +160,12 @@ if __name__ == "__main__":
                 raise Exception(file.path)
 
     # save participants
-    to_tsv(participants, os.path.join(out_dir, "all_participants.tsv"))
+    to_tsv(participants, os.path.join(out_dir, "participants_all.tsv"))
     mri_participants = [os.path.basename(s) for s in sorted(glob(os.path.join(out_dir, "sub-*")))]
     mri_participants = [s.split("-")[-1] for s in mri_participants]
     participants = participants[participants.participant_id.isin(mri_participants)]
-    to_tsv(participants, os.path.join(out_dir, "participants.tsv"))
+    to_tsv(participants, os.path.join(out_dir, "participants_mri.tsv"))
+    to_tsv(participants_missing, os.path.join(out_dir, "participants_missing.tsv"))
 
     run("bids-validator {}".format(out_dir))
 
