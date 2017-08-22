@@ -14,6 +14,9 @@ if __name__ == "__main__":
     # Load data
     os.chdir(bids_dir)
     subjects = sorted(glob("sub-*"))
+    #remove MPG1x subjects, as bids validator: We were unable to parse header data from this NIfTI file (code: 26 - NIFTI_HEADER_UNREADABLE)
+    subjects = list(filter(lambda s: "MPG1x" not in s, subjects))
+
     df = pd.DataFrame([])
     for s in subjects:
         print(s)
